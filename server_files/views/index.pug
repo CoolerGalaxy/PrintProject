@@ -1,0 +1,18 @@
+
+doctype html
+html(lang='en')
+  head
+    title PrintFarmer
+  body
+    h1 Print Farmer
+    each client in clients
+      div.container
+        p client: #{client.printer_name}
+        button(
+          class='testerButton'
+          name=client.printer_name
+        ) TESTING
+    script(src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js")
+    script(src="my.js")
+      
+      

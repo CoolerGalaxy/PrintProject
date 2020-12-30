@@ -1,0 +1,21 @@
+<h3>Print Farmer</h3>
+<form class="form-horizontal">
+    <div class="control-group">
+        <label class="control-label">{{ _('Server URL') }}</label>
+        <div class="controls">
+			<input type="text" class="input-block-level" data-bind="value: settings.plugins.PrintFarmer.server_url">
+        </div>
+    </div>
+	    <div class="control-group">
+        <label class="control-label">{{ _('Server Port') }}</label>
+        <div class="controls">
+			<input type="text" class="input-block-level" data-bind="value: settings.plugins.PrintFarmer.server_port">
+        </div>
+    </div>
+	<div class="control-group">
+		<label class="control-label">{{ _('Printer Name') }}</label>
+		<div class="controls">
+			<input type="text" class="input-block-level" data-bind="value: settings.plugins.PrintFarmer.printer_name">
+		</div>
+	</div>
+</form>

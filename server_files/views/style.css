@@ -1,0 +1,52 @@
+
+
+
+
+
+body{
+    background-color: black;
+}
+
+h1{
+    text-align: center;
+    color: white;
+}
+
+#printers{
+    border-style: solid;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    display: flex;
+    align-items: center;
+}
+
+#printerContainer{
+    border-style: solid;
+    border-color: red;
+    text-align: center;
+    padding: 10px;
+    margin: 10px;
+}
+
+.printerTitle{
+    display: block;
+    color: white;
+}
+
+.tempImage{
+    display: block;
+}
+
+.progressDiv{
+    width: 100%;
+    background-color: gray;
+}
+
+.progressBar{
+    width: 1%;
+    height: 20px;
+    background-color: orangered;
+    text-align: center;
+    color: white;
+}

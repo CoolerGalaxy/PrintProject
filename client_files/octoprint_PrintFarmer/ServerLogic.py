@@ -1,6 +1,7 @@
+import json
 import logging
 from threading import Thread
-from time import sleep
+import time
 from .SocketServer import SocketServer
 
 url = "ws://192.168.1.96:8080" # hard coded temp code for testing
@@ -10,24 +11,26 @@ class ServerLogic(object):
 	
 	def __init__(self, plugin):
 		self.socket = None
+		self.plugin = plugin
 		self.server_url = plugin.server_url
 		self.server_port = plugin.server_port
 		self.printer_name = plugin.printer_name
 			
 	def update_prep(self):
 		return {
+			"questioner": "printer",
 			"printer_name": self.printer_name
 		}
 
 	def send_printer_update(self):
-		''' format...
+		''' output format...
 		{
+			"questioner": "printer",
 			"printer_name": printer_name
 		}
 		'''
 		try:
-			# hard coded temp code for testing
-			self.socket.send_data(data = {"printer_name": "frank"})
+			self.socket.send_data(data = self.update_prep())
 			_logger.info("data sent")
 		except Exception as e:
 			_logger.info("error sending data")
@@ -42,24 +45,46 @@ class ServerLogic(object):
 			_logger.info("error sending heartbeat")
 			_logger.info(e)
 			
-	def loop(self):
+	def on_server_message(self, ws, message):
+		''' input format...
+		{
+			"command": command
+		}
+		'''
 		try:
-			self.socket = SocketServer(url = url)
-			wst = Thread(target=self.socket.run)
-			wst.start()
-			sleep(1) # figure out async operations with websocket module!!!
+			msg = json.loads(message)
+			_logger.info(msg)
 			
-			self.socket.send_data(data='server received')
-			self.send_printer_update()
+			if msg["command"] == "stop":
+				self.plugin._printer.cancel_print()
 			
-			''' because infinite loop?? '''
-			''' triggering octoprint safe mode / find a better way to maintain connection!!!
-			while(True):
-				if self.socket.connected():
-					self.send_heartbeat()
-				sleep(10)
-			'''
 		except Exception as e:
-			_logger.info("error starting main loop")
+			_logger.info(message)
 			_logger.info(e)
+			
+	def connect_socket(self):
+		self.socket = SocketServer(url = self.server_url,
+									port = self.server_port,
+									on_server_message = self.on_server_message)
+		wst = Thread(target = self.socket.run)
+		wst.start()
+		time.sleep(1) # figure out async operations with websocket module!!!
+		
+		#self.socket.send_data(data='printer sent generic message')
+		self.send_printer_update()
+			
+	def loop(self):
+		last_hb_time = time.time()
+		
+		while True: # need antoher method / inf. loop triggering octoprint safe mode
+			try:
+				self.connect_socket()
+				while self.socket.connected():
+					if time.time() - last_hb_time > 100:
+						self.send_heartbeat()
+						last_hb_time = time.time()
+					time.sleep(1)
+			except Exception as e:
+				_logger.info(e)
+			time.sleep(1)
 

@@ -1,23 +1,25 @@
 # coding = utf-8
 
 from __future__ import absolute_import
+import json
 import octoprint.plugin
 import requests # this will probably go away
 from .ServerLogic import ServerLogic
 
 class PrintFarmer(octoprint.plugin.AssetPlugin,
+					octoprint.plugin.EventHandlerPlugin,
+					octoprint.plugin.ProgressPlugin,
 					octoprint.plugin.SettingsPlugin,
 					octoprint.plugin.ShutdownPlugin,
 					octoprint.plugin.StartupPlugin,
 					octoprint.plugin.TemplatePlugin):
 					
 	def on_after_startup(self):
-		
 		# this snippet divides each server reboot in the log file for easier viewing
 		division = ""
 		for x in range(0,150):
 			division = division + "="
-		self._logger.info(division)
+		self._logger.info(division, "\n\n")
 		
 		self._logger.info("PrintFarmer Loaded (current site: %s)" % self._settings.get(["server_url"]))
 		
@@ -25,11 +27,16 @@ class PrintFarmer(octoprint.plugin.AssetPlugin,
 		self.server_port = self._settings.get(["server_port"])
 		self.printer_name = self._settings.get(["printer_name"])
 		
-
 		self.client = ServerLogic(self)
-		self._logger.info("STARTING LOOP!")
 		self.client.loop()
-		self._logger.info("PAST LOOP!")
+		
+	def on_print_progress(self, storage, path, progress):
+		printer_data = self._printer.get_current_data()
+		completion = {'questioner':'printer',
+							'printer_name':self.printer_name,
+							'completion':str(int(printer_data['progress']['completion']))}
+		#self._logger.info(json.dumps(completion))
+		self.client.socket.send_data(json.dumps(completion))
 
 	def get_template_configs(self):
 		return [

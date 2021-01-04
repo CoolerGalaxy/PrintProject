@@ -5,9 +5,8 @@ const WebSocket = require('ws');
 const PORT = 8080;
 const app = express();
 
-clients = [];
-clients.push({"printer_name": 'frank'}) // for testing //
-clients.push({"printer_name": 'henry'}) // for testing //
+printerSockets = new Object(); // { printerName: socket }
+browserSockets = new Set();
 
 // troubleshooting info
 console.log('working directory: ' + __dirname);
@@ -16,24 +15,14 @@ console.log('working directory: ' + __dirname);
 // express code - USER
 ///////////////////////////////////////////////////
 
-app.use(express.static(path.join(__dirname, 'js')));
+app.use(express.static(path.join(__dirname, '/')));
 app.set("views", path.join(__dirname, "views"));
 app.set('view engine', 'pug');
 
 // renders main web page
 app.get('/', (req, res) => {
-  res.render('index', {
-    "clients": clients
-  });
-
+  res.render('index');
   console.log('***root directory accessed***');
-});
-
-// for shuttling commands back to client
-app.post('/cmd', (req, res) => {
-
-  console.log('button press detected')
-
 });
 
 ////////////////////////////////////////////////////
@@ -42,44 +31,87 @@ app.post('/cmd', (req, res) => {
 
 const wss= new WebSocket.Server({ noServer: true });
 
-wss.on('connection', ws => {
-
+wss.on('connection', (ws, req) => {
   console.log("client connected");
-  ws.send("client received message\n");
+  //console.log(ws);
+  //console.log(req.headers) // solo use of req arg in this scope
 
   ws.on('message', message => {
     if (message == 'ping') {
-
-      ws.send('heartbeat detected by server\n');
-      console.log('ping received'); 
+      console.log('heartbeat received'); 
     } else if (test_json(message)) {
-      console.log("i see JSON");
-      /*{
-        "printer_name": printer_name
-      }*/
 
-      update_obj(message);
-      debug_print();
+      var messageObj = JSON.parse(message)
 
-      // need frontend communication to client //
+      console.log('SERVER RECEIVED', messageObj)
 
-      //console output - verify printer communication
-      var printer_obj = JSON.parse(message);
-      console.log('message received from ' + printer_obj.printer_name);
-      ws.send(printer_obj.printer_name + ", the server says hi!");
+      if (messageObj.questioner == 'browser') {
+        /* incoming browser client json format
+        {
+          'questioner': 'browser', 
+          'command': <<<cmd>>>,
+          'target': <<<target>>> // (target printer name)
+        }*/
+        
+        if (!(ws in browserSockets)) {
+          browserSockets.add(ws)
+        }
+        
+        switch(messageObj.command) {
+          /* outgoing command to printer format
+          {
+            'command': <<<command>>>
+          }*/
+          case 'client_list':
+            console.log('SERVER SENDING to browser', build_printer_list())
+            ws.send(build_printer_list());
+            break;
+          case 'stop_print':
+            console.log('STOPPING PRINT for', messageObj.target)
+
+            if (printerSockets) {
+              printerSockets[messageObj.target].send(JSON.stringify({'command':'stop'}))
+            }
+            break;
+            
+        }
+      } else if (messageObj.questioner == 'printer') {
+        /* incoming printer client json format
+        {
+          'questioner': 'printer',
+          'printer_name': <<<printer_name>>>
+          'completion': <<<compl_percent>>>
+        }*/
+        update_printers(message, ws); // will update printer socket each time
+
+        if (messageObj.completion) {
+          browser_broadcast('completion',
+                          messageObj.completion,
+                          messageObj.printer_name)
+        }
+      }
+      console.log('CONNECTIONS: (P='+
+        Object.keys(printerSockets).length+
+        ')(B='+browserSockets.size+')')
+
     } else {
-      //console output - generic communication
       console.log(message);
-      ws.send('generic message received');
     }
   });
 
   ws.on('close', () => {
     console.log("client disconnected")
+    if (browserSockets.has(ws)) {
+      browserSockets.delete(ws)
+    } else if (Object.values(printerSockets).indexOf(ws) > -1) {
+      delete printerSockets[ws] // DOUBLE CHECK THIS IS WORKING RIGHT
+    }
   });
 });
 
-const server = app.listen(PORT);
+const server = app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`)
+});
 
 server.on('upgrade', (req, socket, head) => {
   wss.handleUpgrade(req, socket, head, sock => {
@@ -91,6 +123,29 @@ server.on('upgrade', (req, socket, head) => {
 // MISC JS
 /////////////////////////////////////////////////////
 
+// sends message to all browser clients
+function browser_broadcast(key, value, printerName) {
+  var msg = {
+    [key]:value,
+    'printer_name':printerName
+  }
+
+  browserSockets.forEach(function each(browser) {
+    browser.send(JSON.stringify(msg))
+  })
+}
+
+// returns number of items in an object
+function object_counter(object) {
+  var length = 0;
+    for( var key in object ) {
+        if( object.hasOwnProperty(key) ) {
+            ++length;
+        }
+    }
+    return length;
+}
+
 // this function is a json detector
 function test_json(jsonStr) {
   try {
@@ -101,24 +156,26 @@ function test_json(jsonStr) {
   return true;
 };
 
-// updates client list using message from client
-function update_obj(jsonStr) {
-  var detected = false; // yuck, find a better way
+// updates printers objecdt using message from client
+function update_printers(jsonStr, socket) {
   var printer_obj = JSON.parse(jsonStr);
+  var name = printer_obj.printer_name;
 
-  for (i=0; i<clients.length; i++) {
-    if (clients[i].printer_name == printer_obj.printer_name) {
-      clients[i] = printer_obj;
-      detected = true;
-    }
-  }
-  if (detected == false) {
-    clients.push(printer_obj);
-    console.log('added: ' + clients[clients.length-1].printer_name);
-  }
+  printerSockets[name] = socket;
 };
 
-// for debugging...derp
+// this returns a stringified list of all printer clients
+function build_printer_list() {
+  var json = []
+
+  for (printer in printerSockets) {
+    json.push({"printer_name": printer})
+  }
+
+  return JSON.stringify(json)
+}
+
+// for debugging...derp => probably remove this function
 function debug_print() {
   console.log("\n" + clients.length + ' items in object / contains...');
 
@@ -127,3 +184,10 @@ function debug_print() {
   }
   console.log("");
 }
+
+
+
+
+
+
+

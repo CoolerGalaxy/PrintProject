@@ -1,18 +1,123 @@
-
 doctype html
 html(lang='en')
   head
     title PrintFarmer
+    style
+      include style.css
   body
     h1 Print Farmer
-    each client in clients
-      div.container
-        p client: #{client.printer_name}
-        button(
-          class='testerButton'
-          name=client.printer_name
-        ) TESTING
-    script(src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js")
-    script(src="my.js")
-      
-      
+    div#printers
+    //- script(src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js")
+    //- script(src="my.js") //- Pull out to file later
+    script.
+      var host = location.origin.replace(/^http/, "ws");
+      console.log("host detected at: " + host);
+	  
+      function connect() {
+        //- Websocket API - https://developer.mozilla.org/en-US/docs/Web/API/WebSocket
+        
+        var ws = new WebSocket(host);
+        
+        ws.addEventListener('open', function() { //event?
+          ws.send('Browser client detected');
+          
+          ws.onmessage = function(message) {
+            try {
+              messageObj = JSON.parse(message.data)
+            } catch(e) {
+              console.log(e);
+            }
+
+            if (Array.isArray(messageObj)) {
+              if ('printer_name' in messageObj[0]) {
+                addPrinterHTML(messageObj, ws)
+              }
+            }
+
+            console.log(messageObj)
+
+            // doubling for some reason???????????????????????
+            if (messageObj.hasOwnProperty('completion')) {
+              updateProgress(messageObj.completion, messageObj.printer_name)
+            }
+          }
+
+          ws.onclose = function(event) {
+            console.log(event.reason + "\nconnection lost. reconnecting")
+
+            setTimeout(function() { // FIND SOMETHING MORE ROBUST / problem detecting connected connection
+              connect()
+            }, 5000)
+          }
+
+          ws.send( serverRequest('client_list', 'all') ); // initial population
+        })
+      }
+      connect()
+
+      function updateProgress(value, printerName) {
+        var progressDiv = document.getElementById('progressDiv_' + printerName)
+        var progressBar = document.getElementById('progressBar_' + printerName)
+        
+        progressBar.style.width = value + '%'
+        progressBar.innerHTML = value + '%'
+      }
+
+      function serverRequest(command, target) {
+        // VALID SERVER COMMANDS
+        // client_list
+        // stop_print
+        return JSON.stringify({
+          'questioner': 'browser', 
+          'command': command,
+          'target': target // (target printer name)
+        })
+      }
+
+      // this function builds a DIV for each printer
+      function addPrinterHTML(messageObj, ws) {
+        var printerList = document.getElementById('printers')
+        
+        if (document.contains(document.getElementById('printerContainer'))) {
+          printerList.removeChild(document.getElementById('printerContainer'))
+        }
+
+        for (i=0; i<messageObj.length; i++) {
+          var printerName = messageObj[i].printer_name
+
+          var divElement = document.createElement('div');
+          divElement.setAttribute('id', 'printerContainer')
+
+          var spanElement = document.createElement('span')
+          spanElement.setAttribute('class', 'printerTitle')
+          var txtPrinterName = document.createTextNode(printerName)
+          spanElement.appendChild(txtPrinterName)
+          divElement.appendChild(spanElement)
+          
+          // placeholder for the mythical video feed
+          var image = document.createElement('img') // TEMP
+          image.setAttribute('class', 'tempImage') // TEMP
+          image.src = 'https://www.prusa3d.com/wp-content/uploads/2019/04/MK3s-home-new.png' // TEMP
+          divElement.appendChild(image) // TEMP
+          
+          var progressDiv = document.createElement('div')
+          progressDiv.setAttribute('class', 'progressDiv')
+          progressDiv.setAttribute('id', 'progressDiv_' + printerName)
+          var progressBar = document.createElement('div')
+          progressBar.setAttribute('id', 'progressBar_' + printerName)
+          progressBar.setAttribute('class', 'progressBar')
+          progressDiv.appendChild(progressBar)
+          divElement.appendChild(progressDiv)
+
+          var buttonElement = document.createElement('button')
+          buttonElement.innerHTML = "Stop Print"
+          buttonElement.setAttribute('id', 'stop_' + printerName)
+          buttonElement.setAttribute('class', 'printerStopButton')
+          buttonElement.addEventListener('click', function() {
+            ws.send( serverRequest('stop_print', printerName) )
+          })
+          divElement.appendChild(buttonElement)
+
+          printerList.appendChild(divElement)
+        }
+      }
